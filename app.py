@@ -11,6 +11,73 @@ from telegram.ext import (
     filters,
 )
 
+from sqlalchemy import (
+    Column,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    Date,
+    DateTime,
+    create_engine,
+    Boolean,
+)
+from sqlalchemy.orm import relationship
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import Session
+
+
+engine = create_engine("sqlite:///bot.db", echo=True)
+Base = declarative_base()
+
+
+class Users(Base):
+    __tablename__ = "users"
+    __tableargs__ = {"comment": "Подписчики"}
+
+    # id = Column(
+    #     Integer, nullable=False, unique=True, primary_key=True, autoincrement=True
+    # )
+    user_id = Column(
+        String(32),
+        primary_key=True,
+        nullable=False,
+        unique=True,
+        comment="ID пользователя в Телеграме",
+    )
+    last_time = Column(DateTime, comment="Дата и время последнего сообщения")
+    moderator = Column(Boolean, default=False, comment="Является ли юзер модератором")
+    active = Column(Boolean, default=True, comment="Активный ли юзер")
+
+
+class MessageQueue(Base):
+    __tablename__ = "message_queue"
+    __tableargs__ = {"comment": "Очередь сообщений для публикации"}
+
+    message_id = Column(
+        Integer, nullable=False, unique=True, primary_key=True, autoincrement=True
+    )
+    text = Column(Text, comment="Текст сообщения")
+    img = Column(String(256), comment="Путь к изображению")
+    permission = Column(Boolean, comment="Допуск к публикации")
+
+
+Base.metadata.create_all(engine)
+
+
+async def add_user(user_id):
+    with Session(autoflush=False, bind=engine) as db:
+        # проверяем наличие юзера в базе, если нет - добавляем
+        row = db.query(Users).filter(Users.user_id == user_id).all()
+        if len(row) == 0:
+            user = Users(user_id=user_id)
+            db.add(user)  # добавляем в бд
+            db.commit()  # сохраняем изменения
+            print("Новый юзер зарегистрирован, ID=", user.user_id)
+        else:
+            print("Такой юзер уже есть в базе, ID=", user_id)
+
+
 TOKEN = constats.TOKEN_BOT
 CHAT_ID = constats.CHANNEL
 
@@ -34,17 +101,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         rf"Hi {user.mention_html()}!",
         reply_markup=ForceReply(selective=True),
     )
+    await add_user(user.id)
 
 
 # /help
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Send a message when the command /help is issued."""
     await update.message.reply_text("Help!")
 
 
 # OTHER
 async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Echo the user message."""
     await update.message.reply_text(update.message.text)
     await post_to_channel(CHAT_ID, update.message.text)
 
@@ -52,7 +118,7 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 # Отправка текста  в канал от имени бота
 async def post_to_channel(chat_id, text):
     print("Публикуем пост: ", text)
-    await bot.send_message(chat_id=chat_id, text=text)
+    await bot.send_message(chat_id=chat_id, text="_" + text + "_", parse_mode="Markdown")
 
 
 def main() -> None:
