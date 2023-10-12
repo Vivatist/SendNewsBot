@@ -44,7 +44,7 @@ class MessageQueue(Base):
     permission = Column(Boolean, comment="Допуск к публикации")
 
 
-engine = create_engine("sqlite:///bot.db", echo=True)
+engine = create_engine("sqlite:///bot.sqlite", echo=True)
 Base.metadata.create_all(engine)
 
 
