@@ -9,7 +9,7 @@ from sqlalchemy import (
     create_engine,
     Boolean,
 )
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, Session
 from sqlalchemy.ext.declarative import declarative_base
 
 
@@ -46,3 +46,13 @@ class MessageQueue(Base):
 
 engine = create_engine("sqlite:///bot.db", echo=True)
 Base.metadata.create_all(engine)
+
+
+async def add_user(user_id):
+    with Session(autoflush=False, bind=engine) as db:
+        # проверяем наличие юзера в базе, если нет - добавляем
+        row = db.query(Users).filter(Users.user_id == user_id).all()
+        if len(row) == 0:
+            user = Users(user_id=user_id)
+            db.add(user)  # добавляем в бд
+            db.commit()  # сохраняем изменения
