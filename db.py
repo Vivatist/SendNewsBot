@@ -1,14 +1,8 @@
-from sqlalchemy import (
-    Column,
-    ForeignKey,
-    Integer,
-    String,
-    Text,
-    Date,
-    DateTime,
-    create_engine,
-    Boolean,
-)
+import logging
+import config
+import datetime
+from sqlalchemy import Column, ForeignKey, create_engine
+from sqlalchemy import Integer, String, Text, Date, DateTime, Boolean  # Типы данных
 from sqlalchemy.orm import relationship, Session
 from sqlalchemy.ext.declarative import declarative_base
 from aiogram.types import Message
@@ -62,9 +56,14 @@ def add_new_user(user_id):
         # проверяем наличие юзера в базе, если нет - добавляем
         row = session.query(Users).filter(Users.user_id == user_id).all()
         if len(row) == 0:
-            user = Users(user_id=user_id)
+            user = Users(
+                user_id=user_id,
+                last_time=datetime.datetime.now()
+                - datetime.timedelta(seconds=config.TIMEOUT),
+            )
             session.add(user)  # добавляем в бд
             session.commit()  # сохраняем изменения
+            logging.info("Новый пользователь добавлен: %s", user_id)
 
 
 def add_message_to_queue(msg: Message, publish=False, img=""):
@@ -74,9 +73,28 @@ def add_message_to_queue(msg: Message, publish=False, img=""):
         )
         session.add(message)  # добавляем в бд
         user = session.query(Users).get(msg.from_user.id)
-        user.last_time = func.now()
+        user.last_time = datetime.datetime.now()
         session.commit()  # сохраняем изменения
+        logging.info("Новое сообщение добавлено: %s", msg.text)
 
 
-def get_time_last_post(user_id) -> DateTime:
-    pass
+def get_last_time(user_id) -> DateTime:
+    with Session(autoflush=False, bind=engine) as db:
+        user = db.query(Users).filter(Users.user_id == user_id).first()
+        logging.info(
+            "У пользователя %s время последней публикации =  %s", user_id, user.last_time
+        )
+        return user.last_time
+
+
+def get_timeleft(user_id):
+    last_time: datetime = get_last_time(user_id)
+    now = datetime.datetime.now()
+    passed_time: datetime.timedelta = (
+        now - last_time
+    )  # прошло времени с прошлой публикации
+    time_left_sec = int(config.TIMEOUT - passed_time.total_seconds())
+    if time_left_sec < 0:
+        time_left_sec = 0
+    logging.info("Осталось времени: %s", int(time_left_sec))
+    return time_left_sec
